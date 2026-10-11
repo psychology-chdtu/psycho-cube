@@ -18,6 +18,61 @@
     <script src="threex/threex-artoolkitcontext.js"></script>
     <script src="threex/threex-arbasecontrols.js"></script>
     <script src="threex/threex-armarkercontrols.js"></script>
+    <style>
+        #controls-panel {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            display: none;
+            gap: 15px;
+            pointer-events: all;
+            user-select: none;
+        }
+
+        .app-btn {
+            padding: 12px 24px;
+            font-size: 16px;
+            font-family: Arial, Helvetica, sans-serif;
+            font-weight: bold;
+            color: #ffffff;
+            border: 2px solid #ffffff;
+            border-radius: 25px;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+            transition: background-color 0.2s, transform 0.1s;
+            outline: none;
+            white-space: nowrap;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .restart-btn {
+            background-color: #28a745;
+        }
+
+        .restart-btn:hover {
+            background-color: #218838;
+        }
+
+        .restart-btn:active {
+            transform: scale(0.95);
+            background-color: #1e7e34;
+        }
+
+        .finish-btn {
+            background-color: #dc3545;
+        }
+
+        .finish-btn:hover {
+            background-color: #c82333;
+        }
+
+        .finish-btn:active {
+            transform: scale(0.95);
+            background-color: #bd2130;
+        }
+    </style>
 </head>
 
 <body style='margin : 0px; overflow: hidden; font-family: Monospace; user-select: none; pointer-events: none;'>
@@ -59,9 +114,46 @@
         </div>
     </div>
 
+    <div id="controls-panel">
+        <button id="restart-btn" class="app-btn restart-btn">Перезапустити</button>
+        <button id="finish-btn" class="app-btn finish-btn">Завершити</button>
+    </div>
+
     <script>
         const access = document.getElementById('access');
         const loader = document.getElementById('loader');
+        const controlsPanel = document.getElementById('controls-panel');
+        const restartBtn = document.getElementById('restart-btn');
+        const finishBtn = document.getElementById('finish-btn');
+
+        restartBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            window.location.reload();
+        });
+
+        finishBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+
+            // Зупиняємо відеопотоки камери
+            document.querySelectorAll('video').forEach(video => {
+                if (video.srcObject) {
+                    video.srcObject.getTracks().forEach(track => track.stop());
+                }
+                video.pause();
+            });
+
+            // Спроба закрити вікно/вкладку
+            window.close();
+            window.open('', '_self');
+            window.close();
+
+            // Якщо браузер заблокував автоматичне закриття вкладки (обмеження безпеки)
+            setTimeout(() => {
+                if (!window.closed) {
+                    alert('Будь ласка, закрийте цю вкладку у вашому браузері.');
+                }
+            }, 300);
+        });
 
         function initiateExperience() {
             // Оголошуємо глобальні змінні
@@ -95,6 +187,42 @@
             let patternsID = [];
 
             let controller;
+
+            // Змінні та функція для автоматичного вирівнювання орієнтації зображень (без перевертання)
+            let imageMeshes = [];
+            const candidateAngles = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
+            const candidateUpVectors = [
+                new THREE.Vector3(0, 0, -1),
+                new THREE.Vector3(-1, 0, 0),
+                new THREE.Vector3(0, 0, 1),
+                new THREE.Vector3(1, 0, 0)
+            ];
+            const tempUpVec = new THREE.Vector3();
+
+            function updateImageOrientation(i) {
+                const mesh = imageMeshes[i];
+                if (!mesh || !markerRoots[i]) return;
+
+                const markerQuat = markerRoots[i].quaternion;
+                let currentAngle = mesh.rotation.z;
+                let currentIndex = candidateAngles.indexOf(currentAngle);
+                if (currentIndex === -1) currentIndex = 0;
+
+                tempUpVec.copy(candidateUpVectors[currentIndex]).applyQuaternion(markerQuat);
+                let maxScore = tempUpVec.y;
+                let bestIndex = currentIndex;
+                const HYSTERESIS = 0.15; // Запобігає тремтінню зображення поблизу кута 45 градусів
+
+                for (let k = 0; k < 4; k++) {
+                    tempUpVec.copy(candidateUpVectors[k]).applyQuaternion(markerQuat);
+                    if (tempUpVec.y > maxScore + HYSTERESIS) {
+                        maxScore = tempUpVec.y;
+                        bestIndex = k;
+                    }
+                }
+
+                mesh.rotation.z = candidateAngles[bestIndex];
+            }
 
             // Ініціалізуємо сцену та запускаємо цикл анімації
             initialize();
@@ -262,6 +390,7 @@
                                         mesh1.rotation.x = -Math.PI / 2;
                                         // Додаємо площину у контейнер
                                         markerRoots[i].add(mesh1);
+                                        imageMeshes[i] = mesh1;
                                         resolve(imageFiles[i])
                                     });
                                 }).then(image => {
@@ -439,6 +568,13 @@
                     if (contentInitialized) {
                         const now = performance.now();
 
+                        // Автоматично вирівнюємо орієнтацію зображень так, щоб вони не переверталися
+                        for (let i = 0; i < markerRoots.length; i++) {
+                            if (markerRoots[i] && markerRoots[i].visible && imageMeshes[i]) {
+                                updateImageOrientation(i);
+                            }
+                        }
+
                         // Оновлюємо мітку часу для всіх маркерів, які видимі в поточному кадрі
                         for (let i = 0; i < markerRoots.length; i++) {
                             if (markerRoots[i] && markerRoots[i].visible) {
@@ -509,6 +645,7 @@
             initiateExperience();
             document.body.removeChild(access);
             loader.style.display = 'block';
+            controlsPanel.style.display = 'flex';
         });
     </script>
 
