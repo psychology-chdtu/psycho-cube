@@ -19,6 +19,16 @@
     <script src="threex/threex-arbasecontrols.js"></script>
     <script src="threex/threex-armarkercontrols.js"></script>
     <style>
+        body > video {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+            z-index: -2 !important;
+        }
+
         #controls-panel {
             position: fixed;
             bottom: 20px;
@@ -269,19 +279,25 @@
                 function onResize() {
                     arToolkitSource.onResize()
                     arToolkitSource.copySizeTo(renderer.domElement)
-                    if (arToolkitContext.arController !== null) {
+                    if (arToolkitContext && arToolkitContext.arController !== null) {
                         arToolkitSource.copySizeTo(arToolkitContext.arController.canvas)
                     }
                 }
 
-                // Викликаємо функцію під час ініціалізації AR
+                // Викликаємо функцію під час ініціалізації AR та із затримками для стабілізації потоку камери
                 arToolkitSource.init(function onReady() {
-                    onResize()
+                    onResize();
+                    setTimeout(onResize, 500);
+                    setTimeout(onResize, 1000);
+                    setTimeout(onResize, 2000);
                 });
 
-                // Викликаємо функцію на resize івент веб-сторінки
+                // Викликаємо функцію на resize івент та зміну орієнтації екрана
                 window.addEventListener('resize', function () {
-                    onResize()
+                    onResize();
+                });
+                window.addEventListener('orientationchange', function () {
+                    setTimeout(onResize, 300);
                 });
 
                 // Ініціалізуємо AR контекст під камеру, патерни, баркод 3х3
